@@ -1,0 +1,15 @@
+{
+  "name": "csvgenerator",
+  "version": "0.0.0",
+  "description": "Source of first and last names: http://deron.meranda.us/data/",
+  "main": "index.coffee",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "BSD-2-Clause",
+  "dependencies": {
+    "underscore": "~1.5.2",
+    "underscore.string": "~2.3.3"
+  }
+}

@@ -1,3 +1,5 @@
+#!/usr/bin/env coffee
+
 fs = require 'fs'
 _ = require 'underscore'
 _.mixin require('underscore.string').exports()
@@ -80,10 +82,11 @@ class CsvGenerator
       email: "Email"
 
     output = []
-    output.push _.join ",", _(mapping).map (value) -> value
+    header = _.join ",", _(mapping).map (value) -> value
+    console.log header
 
     for i in [0..count]
       console.log @getRandom().toString mapping + "\n"
 
 generator = new CsvGenerator()
-console.log generator.generate(10000000)
+generator.generate(100)

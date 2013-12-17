@@ -14,40 +14,42 @@ class ChanceGroup
     units = _.filter @units, (unit) -> unit.cumulative < result
     return _.max(units, (unit) -> unit.cumulative).data
 
-readCensus = (filename) ->
-  data = fs.readFileSync filename, 'utf8'
-  console.log "There was a problem reading first names" if not data
+class CensusReader
+  @read: (filename) ->
+    data = fs.readFileSync filename, 'utf8'
+    console.log "There was a problem reading first names" if not data
 
-  lines = _.lines data
+    lines = _.lines data
 
-  cumulative = 0
-  names = lines.map (line) ->
-    return undefined if not line
-    words = _.words line
-    cumulative += parseInt words[3] * 1000, 10
-    return {
-      data: _.capitalize words[0].toLowerCase()
-      chance: parseInt words[1] * 1000, 10
-      cumulative: cumulative
-    }
+    cumulative = 0
+    names = lines.map (line) ->
+      return undefined if not line
+      words = _.words line
+      cumulative += parseInt words[3] * 1000, 10
+      return {
+        data: _.capitalize words[0].toLowerCase()
+        chance: parseInt words[1] * 1000, 10
+        cumulative: cumulative
+      }
 
-  return _(names).filter (obj) -> not _.isUndefined obj
+    return new ChanceGroup _(names).filter (obj) -> not _.isUndefined obj
 
-readCompanies = (filename) ->
-  data = fs.readFileSync filename, 'utf8'
-  return console.log "There was a problem reading companies" if not data
+class FlatDistReader
+  @read: (filename) ->
+    data = fs.readFileSync filename, 'utf8'
+    return console.log "There was a problem reading #{filename}" if not data
 
-  lines = _.lines data
-  
-  cumulative = 0
-  names = lines.map (line) ->
-    return undefined if not line
-    return {
-      data: _.capitalize line
-      chance: 1
-      cumulative: cumulative++
-    }
-  return _(names).filter (obj) -> not _.isUndefined obj
+    lines = _.lines data
+    
+    cumulative = 0
+    names = lines.map (line) ->
+      return undefined if not line
+      return {
+        data: _.capitalize line
+        chance: 1
+        cumulative: cumulative++
+      }
+    return new ChanceGroup _(names).filter (obj) -> not _.isUndefined obj
 
 class CsvLine
   constructor: (@details) ->
@@ -56,13 +58,11 @@ class CsvLine
     return _.join ",", _(@details).map (value, key) -> value
 
 class CsvGenerator
-  firstNames: new ChanceGroup readCensus 'census-derived-all-first.txt'
-  lastNames: new ChanceGroup readCensus 'census-dist-2500-last.txt'
-  companies: new ChanceGroup readCompanies 'fortune500.txt'
+  @firstNames: CensusReader.read 'census-derived-all-first.txt'
+  @lastNames: CensusReader.read 'census-dist-2500-last.txt'
+  @companies: FlatDistReader.read 'fortune500.txt'
 
-  constructor: ->
-
-  getRandom: ->
+  @getRandom: ->
     first = @firstNames.getRandom()
     last = @lastNames.getRandom()
     company = @companies.getRandom()
@@ -72,21 +72,43 @@ class CsvGenerator
       lastName: last
       company: company
       email: "#{first}.#{last}@#{_.slugify company}.com".toLowerCase()
+      website: "http://www.#{_.slugify company}.com".toLowerCase()
 
-  generate: (count=10) ->
-    # Todo mapping
+  @generate: (count=10) ->
     mapping =
       firstName: "First Name"
       lastName: "Last Name"
       company: "Company"
       email: "Email"
+      website: "Website"
 
     output = []
     header = _.join ",", _(mapping).map (value) -> value
     console.log header
 
-    for i in [0..count]
+    for i in [0...count]
       console.log @getRandom().toString mapping + "\n"
 
-generator = new CsvGenerator()
-generator.generate(100)
+CsvGenerator.generate(2)
+
+## Default Fields to have:
+# Zip
+# Years in business
+# territory
+# state
+# source
+# salutation
+# phone
+# job title
+# industry
+# fax
+# employees
+# do not email
+# do not call
+# department
+# country
+# comments
+# city
+# annual revenue
+# address two
+# address one

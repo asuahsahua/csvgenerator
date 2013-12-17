@@ -1,114 +1,110 @@
 #!/usr/bin/env coffee
-
-fs = require 'fs'
 _ = require 'underscore'
 _.mixin require('underscore.string').exports()
+Faker = require 'Faker'
+csv = require 'csv'
 
-class ChanceGroup
-  constructor: (@units) ->
-    chances = @units.map (a) -> a.chance
-    @cumulative = _.reduce chances, ((a, b) -> a + b), 0
-
-  getRandom: ->
-    result = _.random 0, @cumulative
-    units = _.filter @units, (unit) -> unit.cumulative < result
-    return _.max(units, (unit) -> unit.cumulative).data
-
-class CensusReader
-  @read: (filename) ->
-    data = fs.readFileSync filename, 'utf8'
-    console.log "There was a problem reading first names" if not data
-
-    lines = _.lines data
-
-    cumulative = 0
-    names = lines.map (line) ->
-      return undefined if not line
-      words = _.words line
-      cumulative += parseInt words[3] * 1000, 10
-      return {
-        data: _.capitalize words[0].toLowerCase()
-        chance: parseInt words[1] * 1000, 10
-        cumulative: cumulative
-      }
-
-    return new ChanceGroup _(names).filter (obj) -> not _.isUndefined obj
-
-class FlatDistReader
-  @read: (filename) ->
-    data = fs.readFileSync filename, 'utf8'
-    return console.log "There was a problem reading #{filename}" if not data
-
-    lines = _.lines data
-    
-    cumulative = 0
-    names = lines.map (line) ->
-      return undefined if not line
-      return {
-        data: _.capitalize line
-        chance: 1
-        cumulative: cumulative++
-      }
-    return new ChanceGroup _(names).filter (obj) -> not _.isUndefined obj
-
-class CsvLine
-  constructor: (@details) ->
-
-  toString: (mapping) ->
-    return _.join ",", _(@details).map (value, key) -> value
+class Record
+  fields: null
+  constructor: (@fields={}) ->
+  toArray: (mapping) ->
+    @fields[key] || null for key of mapping
+  set: (mapping) ->
+    @fields[key] = value for key, value of mapping
+  get: (key) ->
+    @fields[key]
 
 class CsvGenerator
-  @firstNames: CensusReader.read 'census-derived-all-first.txt'
-  @lastNames: CensusReader.read 'census-dist-2500-last.txt'
-  @companies: FlatDistReader.read 'fortune500.txt'
+  @defaultMapping:
+    email: "Email Address"
+    first: "First Name"
+    last: "Last Name"
+    salutation: "Salutation"
+    addressOne: "Address One"
+    addressTwo: "Address Two"
+    city: "City"
+    zip: "Zip Code"
+    company: "Company"
+    website: "Website"
+    phone: "Phone Number"
+    fax: "Fax Number"
+    years: "Years In Business"
+    title: "Job Title"
+    industry: "Industry"
+    department: "Department"
+    source: "Source"
+    employees: "Number of Employees"
+    doNotEmail: "Do Not Email"
+    doNotCall: "Do Not Call"
+    comments: "Comments"
+    annualRevenue: "Annual Revenue"
+    state: "State"
+    territory: "Territory"
+    country: "Country"
 
-  @getRandom: ->
-    first = @firstNames.getRandom()
-    last = @lastNames.getRandom()
-    company = @companies.getRandom()
+  @emailify: (first, last, company) ->
+    "#{first}.#{last}@#{_.slugify company}.com".toLowerCase()
 
-    return new CsvLine
-      firstName: first
-      lastName: last
+  @websiteify: (company) ->
+    "http://www.#{_.slugify company}.com".toLowerCase()
+
+  @getRandom: (mapping) ->
+    # https://github.com/marak/Faker.js/
+    first = Faker.Name.firstName()
+    last = Faker.Name.lastName()
+    company = Faker.Company.companyName()
+
+    record = new Record
+      email: @emailify first, last, company
+      first: first
+      last: last
+      salutation: Faker.random.name_prefix()
+      addressOne: Faker.Address.streetAddress()
+      addressTwo: Faker.Address.secondaryAddress()
+      city: Faker.Address.city()
+      zip: Faker.Address.zipCode()
       company: company
-      email: "#{first}.#{last}@#{_.slugify company}.com".toLowerCase()
-      website: "http://www.#{_.slugify company}.com".toLowerCase()
+      website: @websiteify company
+      phone: Faker.PhoneNumber.phoneNumber()
+      fax: Faker.PhoneNumber.phoneNumber()
+      years: _.random(1, 25)
+      title: Faker.Company.bs()
+      industry: Faker.Company.bs()
+      department: Faker.Company.bs()
+      source: Faker.Internet.domainName()
+      employees: _.random(1, 300)
+      doNotEmail: [true, false][_.random(0, 1)]
+      doNotCall: [true, false][_.random(0, 1)]
+      comments: Faker.Lorem.sentence()
+      annualRevenue: _.random(100, 100000000)
+    if _.random(0, 1) is 1
+      record.set
+        state: Faker.Address.usState()
+        country: "United States"
+    else
+      record.set
+        territory: Faker.Address.ukCounty()
+        country: "United Kingdom"
 
-  @generate: (count=10) ->
-    mapping =
-      firstName: "First Name"
-      lastName: "Last Name"
-      company: "Company"
-      email: "Email"
-      website: "Website"
+    return record.toArray mapping
 
-    output = []
-    header = _.join ",", _(mapping).map (value) -> value
-    console.log header
+  @poolSize: 1000
 
-    for i in [0...count]
-      console.log @getRandom().toString mapping + "\n"
+  @generate: (toGenerate=10, mapping=@defaultMapping) ->
+    ## Output the header line
+    csv().from([v for k,v of mapping]).to((d) -> console.log d)
 
-CsvGenerator.generate(2)
-
-## Default Fields to have:
-# Zip
-# Years in business
-# territory
-# state
-# source
-# salutation
-# phone
-# job title
-# industry
-# fax
-# employees
-# do not email
-# do not call
-# department
-# country
-# comments
-# city
-# annual revenue
-# address two
-# address one
+    ## Output the rest - with grouping because it looks like csv() 
+    ## queues in the background, causing OOM issues.
+    workQueued = 0
+    work = =>
+      csv().from([@getRandom mapping]).to (d) ->
+        console.log d
+        if workQueued < toGenerate
+          workQueued++
+          work()
+    for i in [0..._.min([toGenerate, 5000])]
+      workQueued++
+      work()
+CsvGenerator.generate(2 * 1000 * 1000)
+#CsvGenerator.generate(1000)
